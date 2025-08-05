@@ -3,6 +3,7 @@ import morgan from "morgan";
 import express from "express";
 import 'dotenv/config';
 import cors from "cors";
+import cookieParser from "cookie-parser";
 // Import Routes
 import healthcheckRoutes from "./routes/healthcheck.routes.js";
 
@@ -16,6 +17,7 @@ app.use(cors({
 app.use(express.json({limit: "16kb"}));
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(express.static("public"));
+app.use(cookieParser());
 
 // Logging
 const morganFormat = ":method :url :status :response-time ms";
