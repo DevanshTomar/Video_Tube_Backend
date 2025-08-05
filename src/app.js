@@ -3,6 +3,8 @@ import morgan from "morgan";
 import express from "express";
 import 'dotenv/config';
 import cors from "cors";
+// Import Routes
+import healthcheckRoutes from "./routes/healthcheck.routes.js";
 
 const app = express();
 
@@ -34,8 +36,6 @@ app.use(
   })
 );
 
-// Import Routes
-import healthcheckRoutes from "./routes/healthcheck.routes.js";
 
 // Routes
 app.use("/api/v1/healthcheck", healthcheckRoutes);
