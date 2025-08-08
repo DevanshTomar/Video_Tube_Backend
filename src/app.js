@@ -6,6 +6,8 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 // Import Routes
 import healthcheckRoutes from "./routes/healthcheck.routes.js";
+import userRoutes from "./routes/user.routes.js";
+import errorHandler from "./middlewares/error.middlewares.js";
 
 const app = express();
 
@@ -41,5 +43,11 @@ app.use(
 
 // Routes
 app.use("/api/v1/healthcheck", healthcheckRoutes);
+app.use("/api/v1/users", userRoutes);
+
+// Error Handler
+app.use(errorHandler);
+
+
 
 export {app};
