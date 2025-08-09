@@ -6,6 +6,7 @@ import {
 } from '../utils/cloudinary.js'
 import ApiError from '../utils/ApiError.js'
 import { User } from '../models/user.models.js'
+import jwt from 'jsonwebtoken'
 
 //helper function to generate access and refresh token
 const generateAccessAndRefreshToken = async (userId) => {
@@ -158,4 +159,50 @@ const loginUser = asyncHandler(async (req, res) => {
   res.status(response.statusCode).json(response)
 })
 
-export { registerUser, loginUser }
+const refreshAccessToken = asyncHandler(async (req, res) => {
+  const {incomingRefreshToken} = req.cookies || req.headers.cookie || req.body
+
+  if (!incomingRefreshToken) {
+    throw new ApiError(401, 'Refresh token is required')
+  }
+
+  try {
+    const decoded = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+
+    if (!decoded) {
+      throw new ApiError(401, 'Invalid refresh token, token is not valid')
+    }
+
+    const userId = decoded?._id
+
+    const user = await User.findById(userId)
+
+    if (!user) {
+      throw new ApiError(404, 'User not found, invalid refresh token')
+    }
+
+    //check if refresh token is valid
+    if (user?.refreshToken !== incomingRefreshToken) {
+      throw new ApiError(401, 'Invalid refresh token, refresh token mismatch')
+    }
+
+    //generate new access token
+    const {accessToken: newAccessToken, refreshToken: newRefreshToken} = await generateAccessAndRefreshToken(userId)
+
+    const response = new ApiResponse(200, {accessToken: newAccessToken, refreshToken: newRefreshToken}, 'Access token refreshed successfully')
+
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: process.env.REFRESH_TOKEN_EXPIRY,
+    }
+
+    res.cookie('accessToken', newAccessToken, options)
+    res.cookie('refreshToken', newRefreshToken, options)
+    res.status(response.statusCode).json(response)
+  } catch (error) {
+    throw new ApiError(401, 'Invalid refresh token: ' + error.message)
+  }
+})
+
+export { registerUser, loginUser, refreshAccessToken }
