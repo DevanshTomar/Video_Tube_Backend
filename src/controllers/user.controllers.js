@@ -7,7 +7,32 @@ import {
 import ApiError from '../utils/ApiError.js'
 import { User } from '../models/user.models.js'
 
-const registerUser = asyncHandler(async (req, res, next) => {
+//helper function to generate access and refresh token
+const generateAccessAndRefreshToken = async (userId) => {
+  try {
+    const user = await User.findById(userId)
+    if (!user){
+      throw new ApiError(404, 'User not found')
+    }
+    //generate access and refresh token
+    const accessToken = user.generateAccessToken()
+    const refreshToken = user.generateRefreshToken()
+    
+    user.refreshToken = refreshToken
+    await user.save({
+      validateBeforeSave: false,
+    })
+
+    return {
+      accessToken,
+      refreshToken,
+    }
+  } catch (error) {
+    throw new ApiError(500, 'Error generating access and refresh token')
+  }
+}
+
+const registerUser = asyncHandler(async (req, res) => {
   // if request body is empty
   if (Object.keys(req.body).length === 0) {
     throw new ApiError(400, 'Request body is empty')
@@ -89,4 +114,48 @@ const registerUser = asyncHandler(async (req, res, next) => {
   }
 })
 
-export { registerUser }
+
+const loginUser = asyncHandler(async (req, res) => {
+  const {email, username, password} = req.body
+
+  if ([email, username, password].some((field) => field?.trim() === '')) {
+    throw new ApiError(400, 'All fields are required')
+  }
+
+  //check if user exists
+  const user = await User.findOne({$or: [{email}, {username}]})
+
+  if (!user) {
+    throw new ApiError(404, 'User not found')
+  }
+
+  //check if password is correct
+  const isPasswordCorrect = await user.isPasswordCorrect(password)
+  if (!isPasswordCorrect) {
+    throw new ApiError(401, 'Invalid password')
+  }
+
+  //generate access and refresh token
+  const {accessToken, refreshToken} = await generateAccessAndRefreshToken(user._id)
+
+  //for extra security
+  const loggedInUser = await User.findById(user._id).select('-password -refreshToken')
+
+  if (!loggedInUser) {
+    throw new ApiError(500, 'Something went wrong while logging in')
+  }
+
+  //set cookies
+  const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: process.env.REFRESH_TOKEN_EXPIRY,
+  }
+
+  const response = new ApiResponse(200, {user: loggedInUser, accessToken, refreshToken}, 'User logged in successfully')
+  res.cookie('accessToken', accessToken, options)
+  res.cookie('refreshToken', refreshToken, options)
+  res.status(response.statusCode).json(response)
+})
+
+export { registerUser, loginUser }
