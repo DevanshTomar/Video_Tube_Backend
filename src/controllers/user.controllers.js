@@ -270,39 +270,54 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 })
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
-  const {fullName, email} = req.body
+  const { fullName, email } = req.body
   if (!fullName) {
-    throw ApiError(400, "Fullname is required")
+    throw ApiError(400, 'Fullname is required')
   }
   if (!email) {
-    throw ApiError(400, "Fullname is required")
+    throw ApiError(400, 'Fullname is required')
   }
 
-  const user = await User.findByIdAndUpdate(req.user?._id, {$set: {
-    fullName,
-    emial: email
-  }}, {new: true}).select("-password -refreshToken")
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        fullName,
+        emial: email,
+      },
+    },
+    { new: true }
+  ).select('-password -refreshToken')
 
-  const response = new ApiResponse(200, user, 'Account details updated successfully')
+  const response = new ApiResponse(
+    200,
+    user,
+    'Account details updated successfully'
+  )
   return res.status(response.statusCode).json(response)
-
 })
 
 const updateUserAvatar = asyncHandler(async (req, res) => {
   const avatarLocalPath = req.file?.path
   if (!avatarLocalPath) {
-    throw ApiError(400, "Avatar is required")
+    throw ApiError(400, 'Avatar is required')
   }
 
   const avatarResponse = await uploadToCloudinary(avatarLocalPath)
   if (!avatarResponse) {
-    throw ApiError(400, "Failed to upload avatar")
+    throw ApiError(400, 'Failed to upload avatar')
   }
   const avatarUrl = avatarResponse.secure_url
 
-  const user = await User.findByIdAndUpdate(req.user?._id, {$set: {
-    avatar: avatarUrl
-  }}, {new: true}).select("-password -refreshToken")
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        avatar: avatarUrl,
+      },
+    },
+    { new: true }
+  ).select('-password -refreshToken')
 
   const response = new ApiResponse(200, user, 'Avatar updated successfully')
   return res.status(response.statusCode).json(response)
@@ -311,32 +326,163 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
 const updateUserCoverImage = asyncHandler(async (req, res) => {
   const coverImageLocalPath = req.file?.path
   if (!coverImageLocalPath) {
-    throw ApiError(400, "Cover image is required")
+    throw ApiError(400, 'Cover image is required')
   }
-  
+
   const coverImageResponse = await uploadToCloudinary(coverImageLocalPath)
 
   if (!coverImageResponse) {
-    throw ApiError(400, "Failed to upload cover image")
+    throw ApiError(400, 'Failed to upload cover image')
   }
   const coverImageUrl = coverImageResponse.secure_url
-  
-  const user = await User.findByIdAndUpdate(req.user?._id, {$set: {
-    coverImage: coverImageUrl
-  }}, {new: true}).select("-password -refreshToken")
 
-  const response = new ApiResponse(200, user, 'Cover image updated successfully')
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        coverImage: coverImageUrl,
+      },
+    },
+    { new: true }
+  ).select('-password -refreshToken')
+
+  const response = new ApiResponse(
+    200,
+    user,
+    'Cover image updated successfully'
+  )
   return res.status(response.statusCode).json(response)
 })
 
-export { 
-  registerUser, 
-  loginUser, 
-  refreshAccessToken, 
-  logoutUser, 
-  changeCurrentPassword, 
-  getCurrentUser, 
-  updateAccountDetails, 
-  updateUserAvatar, 
-  updateUserCoverImage
+const userChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params
+
+  if (!username?.trim()) {
+    throw ApiError(400, 'Username is required')
+  }
+
+  const channel = await User.aggregate([
+    {
+      $match: {
+        username: username?.toLowerCase(),
+      },
+    },
+    {
+      $lookup: {
+        from: 'subscriptions',
+        localField: '_id',
+        foreignField: 'channel',
+        as: 'subscribers',
+      },
+    },
+    {
+      $lookup: {
+        from: 'subscriptions',
+        localField: '_id',
+        foreignField: 'subscriber',
+        as: 'subscribedTo',
+      },
+    },
+    {
+      $addFields: {
+        subscribersCount: { $size: '$subscribers' },
+        subscribedToCount: { $size: '$subscribedTo' },
+        isSubscribed: {
+          $cond: {
+            if: {
+              $in: [req.user?._id, '$subscribers.subscriber'],
+            },
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        fullName: 1,
+        username: 1,
+        avatar: 1,
+        subscribersCount: 1,
+        subscribedToCount: 1,
+        isSubscribed: 1,
+        coverImage: 1,
+        email: 1,
+      },
+    },
+  ])
+
+  if (!channel?.length) {
+    throw ApiError(404, 'Channel not found')
+  }
+
+  const response = new ApiResponse(
+    200,
+    channel[0],
+    'Channel profile fetched successfully'
+  )
+  return res.status(response.statusCode).json(response)
+})
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user?._id),
+      },
+    },
+    {
+      $lookup: {
+        from: 'videos',
+        localField: 'watchHistory',
+        foreignField: '_id',
+        as: 'watchHistory',
+        pipeline: [
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'uploader',
+              foreignField: '_id',
+              as: 'owner',
+            },
+            pipeline: [
+              {
+                $project: {
+                  _id: 1,
+                },
+              },
+            ],
+          },
+          {
+            $addFields: {
+              owner: {
+                $first: '$owner',
+              }
+            }
+          }
+        ],
+      },
+    },
+  ])
+
+  if (!user?.length) {
+    throw ApiError(404, 'Watch history not found')
+  }
+
+  const response = new ApiResponse(200, user, 'Watch history fetched successfully')
+  return res.status(response.statusCode).json(response)
+})
+
+export {
+  registerUser,
+  loginUser,
+  refreshAccessToken,
+  logoutUser,
+  changeCurrentPassword,
+  getCurrentUser,
+  updateAccountDetails,
+  updateUserAvatar,
+  updateUserCoverImage,
+  userChannelProfile,
+  getWatchHistory,
 }
