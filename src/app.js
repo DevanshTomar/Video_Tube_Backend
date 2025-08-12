@@ -44,6 +44,7 @@ app.use(
 // Routes
 app.use("/api/v1/healthcheck", healthcheckRoutes);
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/tweets", tweetRoutes);
 
 // Error Handler
 app.use(errorHandler);
